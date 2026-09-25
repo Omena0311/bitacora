@@ -132,7 +132,7 @@ footer button{background:none;border:0;color:var(--activa);padding:0;text-decora
 <body>
 <main>
   <header class="barra">
-    <div class="marca">Bitácora<small id="fechaHoy">Sistemas SHYLA</small></div>
+    <div class="marca">Bitácora<small id="fechaHoy">Sistemas SHYLA</small><small id="nombreAsesor"></small></div>
     <div class="sync" id="sync"><span class="punto off"></span><span>Sin conexión</span></div>
   </header>
 
@@ -216,6 +216,7 @@ footer button{background:none;border:0;color:var(--activa);padding:0;text-decora
           <div class="campo"><label for="fFin">Fin</label><input type="datetime-local" id="fFin"></div>
         </div>
         <div class="campo"><label for="fNotas">Notas</label><textarea id="fNotas" maxlength="500"></textarea></div>
+        <div class="campo"><label for="fTicket">Número de ticket (opcional)</label><input type="text" id="fTicket" list="dlTickets" autocomplete="off" placeholder="Busca o escribe el ticket"><datalist id="dlTickets"></datalist></div>
         <div class="err" id="errFechas"></div>
       </div>
       <div class="acciones">
@@ -237,27 +238,33 @@ footer button{background:none;border:0;color:var(--activa);padding:0;text-decora
 <script>
 /* ================== CONFIGURACIÓN (edita solo esta sección) ================== */
 const CONFIG = {
-  clientId: "6e936517-ef92-4e10-83ac-64e65d73f8a8", // Id. de aplicación (cliente) de Entra ID
-  tenantId: "780ad8ec-7bb7-4356-a6b2-11c99d60ee48",     // Id. de directorio (inquilino)
-  excelPath: "/Productividad/Registro_Actividades.xlsx",
-  estadoPath: "/Productividad/estado_bitacora.json",
+  clientId: "6e936517-ef92-4e10-83ac-64e65d73f8a8",     // Id. de aplicación (cliente) de Entra ID
+  tenantId: "PEGA_AQUI_EL_TENANT_ID",     // Id. de directorio (inquilino)
+  // Enlace para compartir de la carpeta del equipo (OneDrive o SharePoint) con permiso de edición para los asesores
+  carpetaCompartida: "PEGA_AQUI_EL_ENLACE_DE_LA_CARPETA",
+  excel: "Registro_Actividades.xlsx",          // nombre del Excel dentro de esa carpeta
   tabla: "tblRegistro",
   // Horario por día de la semana (0=domingo): [inicio, fin, comida] en minutos desde las 00:00
   horario: { 1:[480,1080,60], 2:[480,1080,60], 3:[480,1080,60], 4:[480,1080,60], 5:[480,1020,30] },
   categoriasBase: ["SAP B1","Red / Firewall / VPN","Microsoft 365","Marketplaces","Soporte a usuarios","Reuniones","Urgencias en sitio","Documentación","Administrativo / Otros"],
   areasBase: ["Almacén","CEDIS","Sucursales","Contabilidad","Ventas","Marketplaces","Dirección","RH","Compras"],
+  // Catálogos externos: enlace para compartir de cada archivo (los asesores necesitan permiso de lectura)
+  // o, si el archivo está dentro de la carpeta compartida, su nombre en "archivo". hoja vacía = primera hoja.
+  empleados: { enlace: "PEGA_AQUI_EL_ENLACE_DE_OSCAR_EMPLEADOS", archivo: "", hoja: "", columnaNombre: "", columnaArea: "" },
+  tickets:   { enlace: "PEGA_AQUI_EL_ENLACE_DE_TIKETS", archivo: "", hoja: "", columna: "A" },
   intervaloSyncSeg: 20
 };
 /* ============================================================================ */
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
-const SCOPES = ["User.Read", "Files.ReadWrite"];
+const SCOPES = ["User.Read", "Files.ReadWrite.All"];
 const DIAS = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
 const $ = id => document.getElementById(id);
 
 let pca = null, cuenta = null, etag = null, ocupado = false;
 let estado = nuevoEstado();
-let categorias = CONFIG.categoriasBase.slice(), solicitantes = [], areas = CONFIG.areasBase.slice();
+let categorias = CONFIG.categoriasBase.slice(), solicitantes = [], areas = CONFIG.areasBase.slice(), empleados = [], tickets = [];
+const COLUMNAS_REGISTRO = 24;
 const dispositivo = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? "Celular" : "PC";
 
 /* ---------- utilidades ---------- */
@@ -300,11 +307,23 @@ async function g(url,opt={}){
   const res=await fetch(url,{...opt,headers:{...(opt.headers||{}),Authorization:"Bearer "+t}});
   return res;
 }
-const rutaGraph = p => GRAPH+"/me/drive/root:"+encodeURI(p);
+/* ---------- carpeta compartida del equipo ---------- */
+let carpeta=null; // {driveId, id}
+const codificarEnlace = u => "u!"+btoa(unescape(encodeURIComponent(u.trim()))).replace(/=+$/,"").replace(/\//g,"_").replace(/\+/g,"-");
+async function resolverEnlace(url){
+  const cacheK="bitacora.enlace."+url, c=ls(cacheK); if(c) return c;
+  const r=await g(GRAPH+"/shares/"+codificarEnlace(url)+"/driveItem?$select=id,name,parentReference");
+  if(!r.ok) throw new Error("enlace "+r.status);
+  const j=await r.json(); const ref={driveId:j.parentReference.driveId,id:j.id}; ls(cacheK,ref); return ref;
+}
+const rutaArchivo = nombre => GRAPH+"/drives/"+carpeta.driveId+"/items/"+carpeta.id+":/"+encodeURI(nombre);
+const usuarioSlug = () => String(cuenta.username||"usuario").toLowerCase().replace(/[^a-z0-9]+/g,"_");
+const archivoEstado = () => "estado_"+usuarioSlug()+".json";
+const K = k => "bitacora."+usuarioSlug()+"."+k;
 
 /* ---------- estado compartido (JSON en OneDrive) ---------- */
 async function leerEstado(){
-  const r=await g(rutaGraph(CONFIG.estadoPath));
+  const r=await g(rutaArchivo(archivoEstado()));
   if(r.status===404){ etag=null; return null; }
   if(!r.ok) throw new Error("Lectura de estado: "+r.status);
   const meta=await r.json(); etag=meta.eTag;
@@ -315,7 +334,7 @@ async function leerEstado(){
 async function escribirEstado(obj,forzar){
   const h={"Content-Type":"text/plain"};
   if(etag&&!forzar) h["If-Match"]=etag;
-  const r=await g(rutaGraph(CONFIG.estadoPath)+":/content",{method:"PUT",headers:h,body:JSON.stringify(obj)});
+  const r=await g(rutaArchivo(archivoEstado())+":/content",{method:"PUT",headers:h,body:JSON.stringify(obj)});
   if(r.status===412) { const e=new Error("conflicto"); e.conflicto=true; throw e; }
   if(!r.ok) throw new Error("Guardado de estado: "+r.status);
   etag=(await r.json()).eTag;
@@ -328,7 +347,7 @@ async function accion(fn){
     if(navigator.onLine && cuenta){
       for(let i=0;i<3;i++){
         try{
-          if(ls("bitacora.pendiente")){ await escribirEstado(normalizarDia(estado),true); ls("bitacora.pendiente",false); }
+          if(ls(K("pendiente"))){ await escribirEstado(normalizarDia(estado),true); ls(K("pendiente"),false); }
           const remoto=normalizarDia((await leerEstado())||nuevoEstado());
           const filas=fn(remoto)||[];
           await escribirEstado(remoto);
@@ -338,19 +357,19 @@ async function accion(fn){
       }
     } else throw new Error("offline");
   }catch(e){
-    const filas=fn(normalizarDia(estado))||[]; encolar(filas); ls("bitacora.pendiente",true);
+    const filas=fn(normalizarDia(estado))||[]; encolar(filas); ls(K("pendiente"),true);
     setSync(navigator.onLine?"pend":"off", navigator.onLine?"Guardado en el equipo, se reintentará":"Sin red: guardado en el equipo");
   }finally{
-    ls("bitacora.estado",estado); ocupado=false; bloquear(false); render(); vaciarCola();
+    ls(K("estado"),estado); ocupado=false; bloquear(false); render(); vaciarCola();
   }
 }
 async function refrescar(){
   if(ocupado||!navigator.onLine||!cuenta) return;
   try{
-    if(ls("bitacora.pendiente")){ await escribirEstado(normalizarDia(estado),true); ls("bitacora.pendiente",false); }
+    if(ls(K("pendiente"))){ await escribirEstado(normalizarDia(estado),true); ls(K("pendiente"),false); }
     const r=await leerEstado();
     if(r){ estado=normalizarDia(r); } else { await escribirEstado(estado=nuevoEstado()); }
-    ls("bitacora.estado",estado); setSync("ok"); render(); vaciarCola();
+    ls(K("estado"),estado); setSync("ok"); render(); vaciarCola();
   }catch(e){ setSync("pend","No se pudo sincronizar"); }
 }
 
@@ -358,41 +377,82 @@ async function refrescar(){
 function fila(act,iniISO,finISO,estatus,notas){
   return [ uid(), act.id, soloFecha(iniISO), DIAS[new Date(iniISO).getDay()], act.nombre, act.categoria, act.prioridad, act.origen, act.solicitante||"",
            act.tipo, aSerial(iniISO), aSerial(finISO), Math.round(min(new Date(finISO)-new Date(iniISO))*10)/10, "", estatus, notas||"", dispositivo, aSerial(new Date().toISOString()),
-           act.area||"", act.interrupcion||"", (act.interrupcion&&estatus==="Terminada")?(act.dejadas||[]).length:"" ];
+           act.area||"", act.interrupcion||"", (act.interrupcion&&estatus==="Terminada")?(act.dejadas||[]).length:"", estatus==="Terminada"?(act.ticket||""):"", cuenta.name||cuenta.username, String(cuenta.username||"").toLowerCase() ];
 }
 function cerrarTramo(s,act,finISO,estatus,notas){
   if(!act.tramoInicio) return null;
   s.hoy.tramos.push({actId:act.id,nombre:act.nombre,categoria:act.categoria,tipo:act.tipo,inicio:act.tramoInicio,fin:finISO});
   const f=fila(act,act.tramoInicio,finISO,estatus,notas); act.tramoInicio=null; return f;
 }
-function encolar(filas){ if(!filas.length) return; const c=ls("bitacora.cola")||[]; ls("bitacora.cola",c.concat(filas)); pintarCola(); }
+function encolar(filas){ if(!filas.length) return; const c=ls(K("cola"))||[]; ls(K("cola"),c.concat(filas)); pintarCola(); }
 let vaciando=false;
 async function vaciarCola(){
   if(vaciando||!navigator.onLine||!cuenta) return; vaciando=true;
   try{
-    let c=ls("bitacora.cola")||[];
+    let c=ls(K("cola"))||[];
     while(c.length){
-      const lote=c.slice(0,20);
-      const r=await g(rutaGraph(CONFIG.excelPath)+":/workbook/tables/"+CONFIG.tabla+"/rows",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({values:lote})});
+      const lote=c.slice(0,20).map(r=>r.length<COLUMNAS_REGISTRO?r.concat(Array(COLUMNAS_REGISTRO-r.length).fill("")):r);
+      const r=await g(rutaArchivo(CONFIG.excel)+":/workbook/tables/"+CONFIG.tabla+"/rows",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({values:lote})});
       if(!r.ok){ setSync("pend","Excel no respondió ("+r.status+"), se reintentará"); break; }
-      c=(ls("bitacora.cola")||[]).slice(lote.length); ls("bitacora.cola",c);
+      c=(ls(K("cola"))||[]).slice(lote.length); ls(K("cola"),c);
     }
   }catch(e){ setSync("pend","Pendiente de enviar a Excel"); }
   finally{ vaciando=false; pintarCola(); }
 }
+/* Lee el rango usado de una hoja de otro Excel de tu OneDrive */
+async function leerHoja(cfg){
+  let base;
+  if(cfg.archivo) base=rutaArchivo(cfg.archivo)+":/workbook/worksheets";
+  else if(cfg.enlace&&/^https?:/i.test(cfg.enlace)){ const ref=await resolverEnlace(cfg.enlace); base=GRAPH+"/drives/"+ref.driveId+"/items/"+ref.id+"/workbook/worksheets"; }
+  else return null;
+  let nombre=cfg.hoja;
+  if(!nombre){ const r=await g(base+"?$select=name&$top=1"); if(!r.ok) return null; const v=(await r.json()).value; if(!v.length) return null; nombre=v[0].name; }
+  const r=await g(base+"('"+encodeURIComponent(nombre.replace(/'/g,"''"))+"')/usedRange(valuesOnly=true)?$select=values");
+  if(!r.ok) return null;
+  return (await r.json()).values||[];
+}
+const normal=t=>String(t??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
+function colIndex(enc,config,patron){
+  if(config){ if(/^[A-Z]{1,2}$/i.test(config)) return config.toUpperCase().split("").reduce((n,ch)=>n*26+ch.charCodeAt(0)-64,0)-1; const i=enc.findIndex(h=>normal(h)===normal(config)); if(i>=0) return i; }
+  return patron?enc.findIndex(h=>patron.test(normal(h))):-1;
+}
+async function cargarEmpleados(){
+  const v=await leerHoja(CONFIG.empleados); if(!v||v.length<2) return null;
+  const enc=v[0]; let cN=colIndex(enc,CONFIG.empleados.columnaNombre,/nombre/); if(cN<0) cN=0;
+  const cA=colIndex(enc,CONFIG.empleados.columnaArea,/^(area|departamento|depto)/);
+  const vistos={};
+  return v.slice(1).map(r=>({nombre:String(r[cN]??"").trim(),area:cA>=0?String(r[cA]??"").trim():""}))
+    .filter(x=>x.nombre&&!vistos[normal(x.nombre)]&&(vistos[normal(x.nombre)]=1));
+}
+async function cargarTickets(){
+  const v=await leerHoja(CONFIG.tickets); if(!v||v.length<2) return null;
+  let c=colIndex(v[0],CONFIG.tickets.columna,/^title$/); if(c<0) c=0;
+  return [...new Set(v.slice(1).map(r=>String(r[c]??"").trim()).filter(Boolean))].reverse();
+}
+function areaDe(nombre){ const e=empleados.find(x=>normal(x.nombre)===normal(nombre)); return e&&e.area?e.area:""; }
+function autollenarArea(inputId,selectId){
+  const a=areaDe($(inputId).value); if(!a) return; const sel=$(selectId);
+  let op=[...sel.options].find(o=>normal(o.value)===normal(a));
+  if(!op){ op=new Option(a,a); sel.add(op); }
+  sel.value=op.value;
+}
 async function cargarCatalogos(){
-  const cache=ls("bitacora.catalogos"); if(cache){ categorias=cache.categorias; solicitantes=cache.solicitantes; if(cache.areas) areas=cache.areas; }
+  const cache=ls("bitacora.catalogos"); if(cache){ categorias=cache.categorias; solicitantes=cache.solicitantes; if(cache.areas) areas=cache.areas; if(cache.empleados) empleados=cache.empleados; if(cache.tickets) tickets=cache.tickets; }
   try{
-    const leer=async t=>{ const r=await g(rutaGraph(CONFIG.excelPath)+":/workbook/tables/"+t+"/rows"); if(!r.ok) return null; return (await r.json()).value.map(v=>String(v.values[0][0]).trim()).filter(Boolean); };
+    const leer=async t=>{ const r=await g(rutaArchivo(CONFIG.excel)+":/workbook/tables/"+t+"/rows"); if(!r.ok) return null; return (await r.json()).value.map(v=>String(v.values[0][0]).trim()).filter(Boolean); };
     const c=await leer("tblCategorias"), s=await leer("tblSolicitantes"), ar=await leer("tblAreas");
     if(c&&c.length) categorias=c; if(s) solicitantes=s; if(ar&&ar.length) areas=ar;
-    ls("bitacora.catalogos",{categorias,solicitantes,areas});
+    try{ const e=await cargarEmpleados(); if(e) empleados=e; }catch(x){}
+    try{ const t=await cargarTickets(); if(t) tickets=t; }catch(x){}
+    ls("bitacora.catalogos",{categorias,solicitantes,areas,empleados,tickets});
   }catch(e){}
   $("fCategoria").innerHTML=categorias.map(c=>`<option>${esc(c)}</option>`).join("");
   const opA=areas.map(c=>`<option>${esc(c)}</option>`).join("");
   $("fArea").innerHTML=`<option value="">Sin especificar</option>`+opA;
   $("iArea").innerHTML=`<option value="">Selecciona el área</option>`+opA;
-  $("dlSolicitantes").innerHTML=solicitantes.map(c=>`<option value="${esc(c)}">`).join("");
+  const personas=[...new Set(empleados.map(e=>e.nombre).concat(solicitantes))];
+  $("dlSolicitantes").innerHTML=personas.map(c=>{ const a=areaDe(c); return `<option value="${esc(c)}"${a?` label="${esc(a)}"`:""}>`; }).join("");
+  $("dlTickets").innerHTML=tickets.map(t=>`<option value="${esc(t)}">`).join("");
 }
 
 /* ---------- acciones del usuario ---------- */
@@ -400,9 +460,9 @@ const buscar=(s,id)=>s.actividades.find(a=>a.id===id);
 function pausar(id){ const t=new Date().toISOString(); accion(s=>{ const a=buscar(s,id); if(!a||a.estado!=="corriendo") return []; const f=cerrarTramo(s,a,t,"Parcial"); a.estado="pausada"; return f?[f]:[]; }); }
 function reanudar(id){ const t=new Date().toISOString(); accion(s=>{ const a=buscar(s,id); if(!a||a.estado!=="pausada") return []; a.estado="corriendo"; a.tramoInicio=t; return []; }); }
 function cambiarTipo(id){ const t=new Date().toISOString(); accion(s=>{ const a=buscar(s,id); if(!a) return []; const f=cerrarTramo(s,a,t,"Parcial"); a.tipo=a.tipo==="Activa"?"Espera":"Activa"; if(a.estado==="corriendo") a.tramoInicio=t; return f?[f]:[]; }); }
-function terminar(id,notas){
+function terminar(id,notas,ticket){
   const t=new Date().toISOString();
-  accion(s=>{ const a=buscar(s,id); if(!a) return []; let f=cerrarTramo(s,a,t,"Terminada",notas);
+  accion(s=>{ const a=buscar(s,id); if(!a) return []; a.ticket=ticket||""; let f=cerrarTramo(s,a,t,"Terminada",notas);
     if(!f){ f=fila(a,t,t,"Terminada",notas); s.hoy.tramos.push({actId:a.id,nombre:a.nombre,categoria:a.categoria,tipo:a.tipo,inicio:t,fin:t}); }
     s.actividades=s.actividades.filter(x=>x.id!==id);
     if(a.interrupcion){ const ids=(a.dejadas||[]).filter(x=>{ const d=buscar(s,x); return d&&d.estado==="pausada"; });
@@ -444,7 +504,7 @@ function guardarForm(ev){
     if(isNaN(i)||isNaN(f)){ $("errFechas").textContent="Indica la hora de inicio y de fin."; return; }
     if(f<=i){ $("errFechas").textContent="La hora de fin debe ser posterior a la de inicio."; return; }
     if(f>new Date(Date.now()+60000)){ $("errFechas").textContent="La hora de fin no puede estar en el futuro."; return; }
-    const ini=i.toISOString(), fin=f.toISOString(), notas=$("fNotas").value.trim();
+    const ini=i.toISOString(), fin=f.toISOString(), notas=$("fNotas").value.trim(); act.ticket=$("fTicket").value.trim();
     accion(s=>{ if(hoyISO(i)===s.hoy.fecha) s.hoy.tramos.push({actId:act.id,nombre,categoria:act.categoria,tipo:act.tipo,inicio:ini,fin}); return [fila(act,ini,fin,"Terminada",notas)]; });
   } else {
     act.tramoInicio=new Date().toISOString();
@@ -477,7 +537,7 @@ function setSync(tipo,texto){
   $("sync").innerHTML=`<span class="punto ${d[0]}"></span><span>${esc(texto||d[1])}</span>`;
 }
 function bloquear(b){ document.querySelectorAll("#vistaApp .btn").forEach(x=>x.disabled=b); }
-function pintarCola(){ const n=(ls("bitacora.cola")||[]).length; $("infoCola").textContent=n?`${n} registro(s) por enviar al Excel`:"Todo enviado al Excel"; }
+function pintarCola(){ const n=(ls(K("cola"))||[]).length; $("infoCola").textContent=n?`${n} registro(s) por enviar al Excel`:"Todo enviado al Excel"; }
 
 function tarjetaInterr(a){
   const dej=(a.dejadas||[]).map(id=>buscar(estado,id)).filter(Boolean);
@@ -492,6 +552,8 @@ function tarjetaInterr(a){
     <div class="cierre">
       <label class="act-det" for="n-${a.id}">Notas (acuerdos, causa, solución)</label>
       <textarea id="n-${a.id}" maxlength="500"></textarea>
+      <label class="act-det" for="k-${a.id}" style="display:block;margin-top:8px">Número de ticket (opcional)</label>
+      <input type="text" class="tk" id="k-${a.id}" list="dlTickets" autocomplete="off" placeholder="Busca o escribe el ticket">
       <div class="acciones"><button class="btn fin" data-acc="terminar">Confirmar y terminar</button><button class="btn" data-acc="cerrarFin">Volver</button></div>
     </div>
   </article>`;
@@ -515,7 +577,9 @@ function tarjeta(a,calc){
     </div>
     <div class="cierre">
       <label class="act-det" for="n-${a.id}">Notas de cierre (opcional)</label>
-      <textarea id="n-${a.id}" maxlength="500" placeholder="Resultado, pendiente, ticket…"></textarea>
+      <textarea id="n-${a.id}" maxlength="500" placeholder="Resultado, pendiente…"></textarea>
+      <label class="act-det" for="k-${a.id}" style="display:block;margin-top:8px">Número de ticket (opcional)</label>
+      <input type="text" class="tk" id="k-${a.id}" list="dlTickets" autocomplete="off" placeholder="Busca o escribe el ticket">
       <div class="acciones"><button class="btn fin" data-acc="terminar">Confirmar y terminar</button><button class="btn" data-acc="cerrarFin">Volver</button></div>
     </div>
   </article>`;
@@ -575,7 +639,12 @@ function tic(){ document.querySelectorAll("[data-desde]").forEach(e=>e.textConte
 /* ---------- arranque ---------- */
 async function mostrarApp(){
   $("vistaAcceso").hidden=true; $("vistaApp").hidden=false;
-  estado=normalizarDia(ls("bitacora.estado")||nuevoEstado()); render();
+  $("nombreAsesor").textContent=cuenta.name||cuenta.username;
+  estado=normalizarDia(ls(K("estado"))||nuevoEstado()); render();
+  if(CONFIG.carpetaCompartida.startsWith("PEGA")){ setSync("off","Falta configurar la carpeta compartida"); return; }
+  const c=ls(K("carpeta")); if(c) carpeta=c;
+  try{ carpeta=await resolverEnlace(CONFIG.carpetaCompartida); ls(K("carpeta"),carpeta); }
+  catch(e){ if(!carpeta){ setSync("off","Sin acceso a la carpeta del equipo"); $("avisos").innerHTML=`<div class="aviso">No se pudo abrir la carpeta compartida. Pide a Sistemas que te comparta la carpeta con permiso de edición.</div>`; return; } }
   await cargarCatalogos(); await refrescar();
   setInterval(tic,1000);
   setInterval(()=>{ if(document.visibilityState==="visible") refrescar(); },CONFIG.intervaloSyncSeg*1000);
@@ -590,7 +659,7 @@ document.addEventListener("click",e=>{
     case "tipo": cambiarTipo(id); break;
     case "abrirFin": card.querySelector(".cierre").classList.add("abierta"); card.querySelector("textarea").focus(); break;
     case "cerrarFin": card.querySelector(".cierre").classList.remove("abierta"); break;
-    case "terminar": terminar(id,card.querySelector("textarea").value.trim()); break;
+    case "terminar": terminar(id,card.querySelector("textarea").value.trim(),card.querySelector(".tk").value.trim()); break;
     case "retomar": retomar([...document.querySelectorAll("#panelRetomar input:checked")].map(x=>x.value)); break;
     case "noRetomar": descartarRetomar(); break;
   }
@@ -601,6 +670,8 @@ $("btnSync").onclick=()=>{ refrescar(); vaciarCola(); };
 $("btnNueva").onclick=()=>abrirForm(true);
 $("btnCancelar").onclick=()=>{ $("formNueva").reset(); limpiarErrores(); modoForm(); abrirForm(false); };
 $("formNueva").addEventListener("submit",guardarForm);
+$("fSolicitante").addEventListener("change",()=>autollenarArea("fSolicitante","fArea"));
+$("iPersona").addEventListener("change",()=>{ autollenarArea("iPersona","iArea"); $("errArea").textContent=""; });
 let tipoInterr="Junta";
 document.querySelectorAll("[data-interr]").forEach(b=>b.onclick=()=>{
   tipoInterr=b.dataset.interr; const f=$("formInterr"); f.reset(); $("errArea").textContent="";
