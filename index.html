@@ -242,7 +242,7 @@ const CONFIG = {
   clientId: "6e936517-ef92-4e10-83ac-64e65d73f8a8",     // Id. de aplicación (cliente) de Entra ID
   tenantId: "780ad8ec-7bb7-4356-a6b2-11c99d60ee48",     // Id. de directorio (inquilino)
   // Enlace para compartir de la carpeta del equipo (OneDrive o SharePoint) con permiso de edición para los asesores
-  carpetaCompartida: "https://shylaa-my.sharepoint.com/:f:/g/personal/sistemas_shyla_com/IgDypk0gTr_3TZxH8gors6iwAaZhwr8CFUvRM8eKPBZ5lh8?e=sSPMDg",
+  carpetaCompartida: "https://shylaa-my.sharepoint.com/:f:/g/personal/sistemas_shyla_com/IgDypk0gTr_3TZxH8gors6iwAaZhwr8CFUvRM8eKPBZ5lh8?e=tBg2U0",
   excel: "Registro_Actividades.xlsx",          // nombre del Excel dentro de esa carpeta
   tabla: "tblRegistro",
   // Horario por día de la semana (0=domingo): [inicio, fin, comida] en minutos desde las 00:00
@@ -251,8 +251,8 @@ const CONFIG = {
   areasBase: ["Almacén","CEDIS","Sucursales","Contabilidad","Ventas","Marketplaces","Dirección","RH","Compras"],
   // Catálogos externos: enlace para compartir de cada archivo (los asesores necesitan permiso de lectura)
   // o, si el archivo está dentro de la carpeta compartida, su nombre en "archivo". hoja vacía = primera hoja.
-  empleados: { enlace: "https://shylaa-my.sharepoint.com/:x:/g/personal/sistemas_shyla_com/IQBRmiQ44QcBQb_8OjlEggxRAYVVx5_juHVbe9VMxHrgpPo?e=aTPeml", archivo: "", hoja: "", columnaNombre: "", columnaArea: "" },
-  tickets:   { enlace: "https://shylaa-my.sharepoint.com/:x:/g/personal/sistemas_shyla_com/IQC-w0aBwhPZSqaQ8zmFNacfARjPvgJ0y3AsVSfwQwjOQJo?e=DIdk82", archivo: "", hoja: "", columna: "A" },
+  empleados: { enlace: "https://shylaa-my.sharepoint.com/:x:/g/personal/sistemas_shyla_com/IQBRmiQ44QcBQb_8OjlEggxRAYVVx5_juHVbe9VMxHrgpPo?e=elyWOr", archivo: "", hoja: "", columnaNombre: "", columnaArea: "" },
+  tickets:   { enlace: "https://shylaa-my.sharepoint.com/:x:/g/personal/sistemas_shyla_com/IQC-w0aBwhPZSqaQ8zmFNacfARjPvgJ0y3AsVSfwQwjOQJo?e=ei3jI9", archivo: "", hoja: "", columna: "A" },
   intervaloSyncSeg: 20
 };
 /* ============================================================================ */
@@ -318,6 +318,12 @@ async function resolverEnlace(url){
   const j=await r.json(); const ref={driveId:j.parentReference.driveId,id:j.id}; ls(cacheK,ref); return ref;
 }
 const rutaArchivo = nombre => GRAPH+"/drives/"+carpeta.driveId+"/items/"+carpeta.id+":/"+encodeURI(nombre);
+/* El Excel se abre por su identificador: abrirlo por ruta provoca el error "Could not obtain a WAC access token" */
+let excelId=null;
+async function baseExcel(){
+  if(!excelId){ const r=await g(rutaArchivo(CONFIG.excel)+"?$select=id"); if(!r.ok){ let m=""; try{ m=(await r.json()).error.message; }catch(x){} throw new Error("No se encontró "+CONFIG.excel+" en la carpeta ("+r.status+" "+m+")"); } excelId=(await r.json()).id; }
+  return GRAPH+"/drives/"+carpeta.driveId+"/items/"+excelId+"/workbook";
+}
 const usuarioSlug = () => String(cuenta.username||"usuario").toLowerCase().replace(/[^a-z0-9]+/g,"_");
 const archivoEstado = () => "estado_"+usuarioSlug()+".json";
 const K = k => "bitacora."+usuarioSlug()+"."+k;
@@ -393,7 +399,8 @@ async function vaciarCola(){
     let c=ls(K("cola"))||[];
     while(c.length){
       const lote=c.slice(0,20).map(r=>r.length<COLUMNAS_REGISTRO?r.concat(Array(COLUMNAS_REGISTRO-r.length).fill("")):r);
-      const r=await g(rutaArchivo(CONFIG.excel)+":/workbook/tables/"+CONFIG.tabla+"/rows",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({values:lote})});
+      const r=await g((await baseExcel())+"/tables/"+CONFIG.tabla+"/rows",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({values:lote})});
+      if(r.status===404) excelId=null;
       if(!r.ok){ let m=""; try{ m=(await r.json()).error.message; }catch(x){} ultimoError="Excel "+r.status+": "+m; setSync("pend","Excel no respondió ("+r.status+"), se reintentará"); break; }
       c=(ls(K("cola"))||[]).slice(lote.length); ls(K("cola"),c);
     }
@@ -413,9 +420,10 @@ async function leerHoja(cfg){
   return (await r.json()).values||[];
 }
 const normal=t=>String(t??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
+const compacto=t=>normal(t).replace(/[\s._-]+/g,"");
 function colIndex(enc,config,patron){
-  if(config){ if(/^[A-Z]{1,2}$/i.test(config)) return config.toUpperCase().split("").reduce((n,ch)=>n*26+ch.charCodeAt(0)-64,0)-1; const i=enc.findIndex(h=>normal(h)===normal(config)); if(i>=0) return i; }
-  return patron?enc.findIndex(h=>patron.test(normal(h))):-1;
+  if(config){ if(/^[A-Z]{1,2}$/i.test(config)) return config.toUpperCase().split("").reduce((n,ch)=>n*26+ch.charCodeAt(0)-64,0)-1; const i=enc.findIndex(h=>compacto(h)===compacto(config)); if(i>=0) return i; }
+  return patron?enc.findIndex(h=>patron.test(compacto(h))):-1;
 }
 async function cargarEmpleados(){
   const v=await leerHoja(CONFIG.empleados); if(!v||v.length<2) return null;
@@ -440,7 +448,7 @@ function autollenarArea(inputId,selectId){
 async function cargarCatalogos(){
   const cache=ls("bitacora.catalogos"); if(cache){ categorias=cache.categorias; solicitantes=cache.solicitantes; if(cache.areas) areas=cache.areas; if(cache.empleados) empleados=cache.empleados; if(cache.tickets) tickets=cache.tickets; }
   try{
-    const leer=async t=>{ const r=await g(rutaArchivo(CONFIG.excel)+":/workbook/tables/"+t+"/rows"); if(!r.ok) return null; return (await r.json()).value.map(v=>String(v.values[0][0]).trim()).filter(Boolean); };
+    const leer=async t=>{ const r=await g((await baseExcel())+"/tables/"+t+"/rows"); if(!r.ok) return null; return (await r.json()).value.map(v=>String(v.values[0][0]).trim()).filter(Boolean); };
     const c=await leer("tblCategorias"), s=await leer("tblSolicitantes"), ar=await leer("tblAreas");
     if(c&&c.length) categorias=c; if(s) solicitantes=s; if(ar&&ar.length) areas=ar;
     try{ const e=await cargarEmpleados(); if(e) empleados=e; }catch(x){}
@@ -679,11 +687,11 @@ async function diagnosticar(){
   await paso("Carpeta compartida",async()=>{ const r=await g(GRAPH+"/shares/"+codificarEnlace(CONFIG.carpetaCompartida)+"/driveItem?$select=id,name,parentReference,folder");
     if(!r.ok) throw await err(r); const j=await r.json(); carpeta={driveId:j.parentReference.driveId,id:j.id}; ls(K("carpeta"),carpeta); ls("bitacora.enlace."+CONFIG.carpetaCompartida,carpeta);
     return "Carpeta: "+j.name+(j.folder?"":" (¡el enlace no es de una carpeta!)"); });
-  await paso("Excel y tabla tblRegistro",async()=>{ const r=await g(rutaArchivo(CONFIG.excel)+":/workbook/tables/"+CONFIG.tabla+"/headerRowRange?$select=values");
+  await paso("Excel y tabla tblRegistro",async()=>{ const r=await g((await baseExcel())+"/tables/"+CONFIG.tabla+"/headerRowRange?$select=values");
     if(!r.ok) throw await err(r); const enc=(await r.json()).values[0];
     if(enc.length<COLUMNAS_REGISTRO) throw new Error("La tabla tiene "+enc.length+" columnas y la página envía "+COLUMNAS_REGISTRO+". Usa la plantilla nueva o agrega: "+["Area","Interrupcion","Tareas_Interrumpidas","Ticket","Asesor","Correo_Asesor"].slice(enc.length-18).join(", "));
     return enc.length+" columnas, última: "+enc[enc.length-1]; });
-  await paso("Categorías (tblCategorias)",async()=>{ const r=await g(rutaArchivo(CONFIG.excel)+":/workbook/tables/tblCategorias/rows"); if(!r.ok) throw await err(r);
+  await paso("Categorías (tblCategorias)",async()=>{ const r=await g((await baseExcel())+"/tables/tblCategorias/rows"); if(!r.ok) throw await err(r);
     const v=(await r.json()).value.map(x=>x.values[0][0]).filter(Boolean); return v.length+": "+v.join(", "); });
   await paso("Archivo de estado",async()=>{ const r=await g(rutaArchivo(archivoEstado())); if(r.status===404) return archivoEstado()+" aún no existe (se crea al iniciar una actividad)"; if(!r.ok) throw await err(r); return archivoEstado()+" OK"; });
   await paso("Empleados",async()=>{ const v=await leerHoja(CONFIG.empleados); if(!v) throw new Error("No se pudo leer. Revisa el enlace y el permiso de lectura."); const enc=v[0];
