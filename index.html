@@ -90,7 +90,11 @@ h2 span{font-weight:400;color:var(--tinta-2);font-size:13px}
 .cierre{margin-top:10px;display:none}
 .cierre.abierta{display:block}
 
-.interr{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.interr{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:14px}
+.interr button.comida{border-color:var(--linea);background:var(--papel);color:var(--tinta)}
+@media (max-width:480px){.interr{grid-template-columns:1fr 1fr}.interr button.comida{grid-column:1/-1}}
+.act.comida{border-left-color:var(--tinta-2);background:var(--papel)}
+.tramo.c{background:var(--linea)}
 .interr[hidden],.interr-form[hidden]{display:none}
 .interr button{padding:12px;border-radius:10px;border:1px solid var(--alerta);background:var(--alerta-suave);color:var(--alerta);font-weight:500;text-align:left;line-height:1.3}
 .interr button small{display:block;font-weight:400;font-size:12px;opacity:.85}
@@ -116,9 +120,13 @@ textarea{min-height:60px;resize:vertical}
 .err{color:var(--alerta);font-size:13px;margin-top:4px;min-height:1em}
 
 .lista{background:var(--papel);border:1px solid var(--linea);border-radius:12px;overflow:hidden}
-.lista div{display:flex;justify-content:space-between;gap:12px;padding:9px 14px;border-top:1px solid var(--linea);font-size:14px}
-.lista div:first-child{border-top:0}
+.lista > div{display:flex;justify-content:space-between;gap:12px;padding:9px 14px;border-top:1px solid var(--linea);font-size:14px}
+.lista > div:first-child{border-top:0}
 .lista b{font-weight:500}
+.tk-hoy{margin-top:4px;font-size:13px}
+.enlace{background:none;border:0;padding:0;color:var(--activa);text-decoration:underline;font-size:13px}
+.edtk{display:none;margin-top:6px}.edtk.abierta{display:block}
+.edtk input{width:100%;padding:8px 10px;border:1px solid var(--linea);border-radius:8px;background:var(--fondo)}
 .lista .t{font-variant-numeric:tabular-nums;color:var(--tinta-2);white-space:nowrap}
 
 .acceso{background:var(--papel);border:1px solid var(--linea);border-radius:14px;padding:28px 20px;text-align:center;margin-top:24px}
@@ -151,13 +159,14 @@ footer button{background:none;border:0;color:var(--activa);padding:0;text-decora
       </div>
       <div class="pista" id="pista" role="img" aria-label="Línea de tiempo de la jornada"></div>
       <div class="horas" id="horas"></div>
-      <div class="leyenda"><span><i style="background:var(--activa)"></i>Requiere tu atención</span><span><i style="background:var(--espera)"></i>En espera</span></div>
+      <div class="leyenda"><span><i style="background:var(--activa)"></i>Requiere tu atención</span><span><i style="background:var(--espera)"></i>En espera</span><span><i style="background:var(--linea)"></i>Comida</span></div>
       <div id="avisos"></div>
     </section>
 
     <div class="interr" id="barraInterr">
       <button type="button" data-interr="Junta">Me llamaron a junta<small>Pausa lo que estás haciendo</small></button>
       <button type="button" data-interr="Urgencia">Urgencia en sitio<small>Ir a revisar a un área</small></button>
+      <button type="button" class="comida" id="btnComida">Salgo a comer<small>Pausa todo; no cuenta como trabajo</small></button>
     </div>
     <form class="interr-form" id="formInterr" hidden novalidate>
       <div class="act-nombre" id="tituloInterr" style="margin-bottom:10px"></div>
@@ -228,9 +237,10 @@ footer button{background:none;border:0;color:var(--activa);padding:0;text-decora
     <h2>Terminado hoy <span id="cuentaHoy"></span></h2>
     <div id="listaHoy"></div>
 
+    <div id="panelDiag" class="lista" style="margin-top:20px" hidden></div>
     <footer>
       <span id="infoCola"></span>
-      <span><button id="btnSync">Sincronizar ahora</button> · <button id="btnSalir">Cerrar sesión</button></span>
+      <span><button id="btnSync">Sincronizar ahora</button> · <button id="btnDiag">Diagnóstico</button> · <button id="btnSalir">Cerrar sesión</button></span>
     </footer>
   </div>
 </main>
@@ -241,7 +251,7 @@ const CONFIG = {
   clientId: "6e936517-ef92-4e10-83ac-64e65d73f8a8",     // Id. de aplicación (cliente) de Entra ID
   tenantId: "780ad8ec-7bb7-4356-a6b2-11c99d60ee48",     // Id. de directorio (inquilino)
   // Enlace para compartir de la carpeta del equipo (OneDrive o SharePoint) con permiso de edición para los asesores
-  carpetaCompartida: "https://shylaa-my.sharepoint.com/:f:/g/personal/sistemas_shyla_com/IgDypk0gTr_3TZxH8gors6iwAaZhwr8CFUvRM8eKPBZ5lh8?e=tBg2U0",
+  carpetaCompartida: "PEGA_AQUI_EL_ENLACE_DE_LA_CARPETA",
   excel: "Registro_Actividades.xlsx",          // nombre del Excel dentro de esa carpeta
   tabla: "tblRegistro",
   // Horario por día de la semana (0=domingo): [inicio, fin, comida] en minutos desde las 00:00
@@ -250,11 +260,12 @@ const CONFIG = {
   areasBase: ["Almacén","CEDIS","Sucursales","Contabilidad","Ventas","Marketplaces","Dirección","RH","Compras"],
   // Catálogos externos: enlace para compartir de cada archivo (los asesores necesitan permiso de lectura)
   // o, si el archivo está dentro de la carpeta compartida, su nombre en "archivo". hoja vacía = primera hoja.
-  empleados: { enlace: "https://shylaa-my.sharepoint.com/:x:/g/personal/sistemas_shyla_com/IQBRmiQ44QcBQb_8OjlEggxRAYVVx5_juHVbe9VMxHrgpPo?e=elyWOr", archivo: "", hoja: "", columnaNombre: "", columnaArea: "" },
-  tickets:   { enlace: "https://shylaa-my.sharepoint.com/:x:/g/personal/sistemas_shyla_com/IQC-w0aBwhPZSqaQ8zmFNacfARjPvgJ0y3AsVSfwQwjOQJo?e=ei3jI9", archivo: "", hoja: "", columna: "A" },
+  empleados: { enlace: "https://shylaa-my.sharepoint.com/:x:/g/personal/sistemas_shyla_com/IQBRmiQ44QcBQb_8OjlEggxRAYVVx5_juHVbe9VMxHrgpPo?e=aTPeml", archivo: "", hoja: "", columnaNombre: "", columnaArea: "" },
+  tickets:   { enlace: "https://shylaa-my.sharepoint.com/:x:/g/personal/sistemas_shyla_com/IQC-w0aBwhPZSqaQ8zmFNacfARjPvgJ0y3AsVSfwQwjOQJo?e=DIdk82", archivo: "", hoja: "", columna: "A" },
   intervaloSyncSeg: 20
 };
 /* ============================================================================ */
+
 const GRAPH = "https://graph.microsoft.com/v1.0";
 const SCOPES = ["User.Read", "Files.ReadWrite.All"];
 const DIAS = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
@@ -316,6 +327,12 @@ async function resolverEnlace(url){
   const j=await r.json(); const ref={driveId:j.parentReference.driveId,id:j.id}; ls(cacheK,ref); return ref;
 }
 const rutaArchivo = nombre => GRAPH+"/drives/"+carpeta.driveId+"/items/"+carpeta.id+":/"+encodeURI(nombre);
+/* El Excel se abre por su identificador: abrirlo por ruta provoca el error "Could not obtain a WAC access token" */
+let excelId=null;
+async function baseExcel(){
+  if(!excelId){ const r=await g(rutaArchivo(CONFIG.excel)+"?$select=id"); if(!r.ok){ let m=""; try{ m=(await r.json()).error.message; }catch(x){} throw new Error("No se encontró "+CONFIG.excel+" en la carpeta ("+r.status+" "+m+")"); } excelId=(await r.json()).id; }
+  return GRAPH+"/drives/"+carpeta.driveId+"/items/"+excelId+"/workbook";
+}
 const usuarioSlug = () => String(cuenta.username||"usuario").toLowerCase().replace(/[^a-z0-9]+/g,"_");
 const archivoEstado = () => "estado_"+usuarioSlug()+".json";
 const K = k => "bitacora."+usuarioSlug()+"."+k;
@@ -376,23 +393,28 @@ async function refrescar(){
 function fila(act,iniISO,finISO,estatus,notas){
   return [ uid(), act.id, soloFecha(iniISO), DIAS[new Date(iniISO).getDay()], act.nombre, act.categoria, act.prioridad, act.origen, act.solicitante||"",
            act.tipo, aSerial(iniISO), aSerial(finISO), Math.round(min(new Date(finISO)-new Date(iniISO))*10)/10, "", estatus, notas||"", dispositivo, aSerial(new Date().toISOString()),
-           act.area||"", act.interrupcion||"", (act.interrupcion&&estatus==="Terminada")?(act.dejadas||[]).length:"", estatus==="Terminada"?(act.ticket||""):"", cuenta.name||cuenta.username, String(cuenta.username||"").toLowerCase() ];
+           act.area||"", act.interrupcion||"", (act.interrupcion&&estatus==="Terminada")?(act.dejadas||[]).length:"", (estatus==="Terminada"||estatus==="Ajuste")?(act.ticket||""):"", cuenta.name||cuenta.username, String(cuenta.username||"").toLowerCase() ];
+}
+function infoTramo(act,ini,fin,estatus){
+  return {actId:act.id,nombre:act.nombre,categoria:act.categoria,tipo:act.tipo,inicio:ini,fin,estatus,prioridad:act.prioridad,origen:act.origen,
+    solicitante:act.solicitante||"",area:act.area||"",interrupcion:act.interrupcion||"",ticket:estatus==="Terminada"?(act.ticket||""):""};
 }
 function cerrarTramo(s,act,finISO,estatus,notas){
   if(!act.tramoInicio) return null;
-  s.hoy.tramos.push({actId:act.id,nombre:act.nombre,categoria:act.categoria,tipo:act.tipo,inicio:act.tramoInicio,fin:finISO});
+  s.hoy.tramos.push(infoTramo(act,act.tramoInicio,finISO,estatus));
   const f=fila(act,act.tramoInicio,finISO,estatus,notas); act.tramoInicio=null; return f;
 }
 function encolar(filas){ if(!filas.length) return; const c=ls(K("cola"))||[]; ls(K("cola"),c.concat(filas)); pintarCola(); }
-let vaciando=false;
+let vaciando=false, ultimoError="";
 async function vaciarCola(){
   if(vaciando||!navigator.onLine||!cuenta) return; vaciando=true;
   try{
     let c=ls(K("cola"))||[];
     while(c.length){
       const lote=c.slice(0,20).map(r=>r.length<COLUMNAS_REGISTRO?r.concat(Array(COLUMNAS_REGISTRO-r.length).fill("")):r);
-      const r=await g(rutaArchivo(CONFIG.excel)+":/workbook/tables/"+CONFIG.tabla+"/rows",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({values:lote})});
-      if(!r.ok){ setSync("pend","Excel no respondió ("+r.status+"), se reintentará"); break; }
+      const r=await g((await baseExcel())+"/tables/"+CONFIG.tabla+"/rows",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({values:lote})});
+      if(r.status===404) excelId=null;
+      if(!r.ok){ let m=""; try{ m=(await r.json()).error.message; }catch(x){} ultimoError="Excel "+r.status+": "+m; setSync("pend","Excel no respondió ("+r.status+"), se reintentará"); break; }
       c=(ls(K("cola"))||[]).slice(lote.length); ls(K("cola"),c);
     }
   }catch(e){ setSync("pend","Pendiente de enviar a Excel"); }
@@ -411,9 +433,10 @@ async function leerHoja(cfg){
   return (await r.json()).values||[];
 }
 const normal=t=>String(t??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
+const compacto=t=>normal(t).replace(/[\s._-]+/g,"");
 function colIndex(enc,config,patron){
-  if(config){ if(/^[A-Z]{1,2}$/i.test(config)) return config.toUpperCase().split("").reduce((n,ch)=>n*26+ch.charCodeAt(0)-64,0)-1; const i=enc.findIndex(h=>normal(h)===normal(config)); if(i>=0) return i; }
-  return patron?enc.findIndex(h=>patron.test(normal(h))):-1;
+  if(config){ if(/^[A-Z]{1,2}$/i.test(config)) return config.toUpperCase().split("").reduce((n,ch)=>n*26+ch.charCodeAt(0)-64,0)-1; const i=enc.findIndex(h=>compacto(h)===compacto(config)); if(i>=0) return i; }
+  return patron?enc.findIndex(h=>patron.test(compacto(h))):-1;
 }
 async function cargarEmpleados(){
   const v=await leerHoja(CONFIG.empleados); if(!v||v.length<2) return null;
@@ -438,7 +461,7 @@ function autollenarArea(inputId,selectId){
 async function cargarCatalogos(){
   const cache=ls("bitacora.catalogos"); if(cache){ categorias=cache.categorias; solicitantes=cache.solicitantes; if(cache.areas) areas=cache.areas; if(cache.empleados) empleados=cache.empleados; if(cache.tickets) tickets=cache.tickets; }
   try{
-    const leer=async t=>{ const r=await g(rutaArchivo(CONFIG.excel)+":/workbook/tables/"+t+"/rows"); if(!r.ok) return null; return (await r.json()).value.map(v=>String(v.values[0][0]).trim()).filter(Boolean); };
+    const leer=async t=>{ const r=await g((await baseExcel())+"/tables/"+t+"/rows"); if(!r.ok) return null; return (await r.json()).value.map(v=>String(v.values[0][0]).trim()).filter(Boolean); };
     const c=await leer("tblCategorias"), s=await leer("tblSolicitantes"), ar=await leer("tblAreas");
     if(c&&c.length) categorias=c; if(s) solicitantes=s; if(ar&&ar.length) areas=ar;
     try{ const e=await cargarEmpleados(); if(e) empleados=e; }catch(x){}
@@ -450,7 +473,7 @@ async function cargarCatalogos(){
   $("fArea").innerHTML=`<option value="">Sin especificar</option>`+opA;
   $("iArea").innerHTML=`<option value="">Selecciona el área</option>`+opA;
   const personas=[...new Set(empleados.map(e=>e.nombre).concat(solicitantes))];
-  $("dlSolicitantes").innerHTML=personas.map(c=>{ const a=areaDe(c); return `<option value="${esc(c)}"${a?` label="${esc(a)}"`:""}>`; }).join("");
+  $("dlSolicitantes").innerHTML=personas.map(c=>`<option value="${esc(c)}">`).join("");
   $("dlTickets").innerHTML=tickets.map(t=>`<option value="${esc(t)}">`).join("");
 }
 
@@ -462,11 +485,22 @@ function cambiarTipo(id){ const t=new Date().toISOString(); accion(s=>{ const a=
 function terminar(id,notas,ticket){
   const t=new Date().toISOString();
   accion(s=>{ const a=buscar(s,id); if(!a) return []; a.ticket=ticket||""; let f=cerrarTramo(s,a,t,"Terminada",notas);
-    if(!f){ f=fila(a,t,t,"Terminada",notas); s.hoy.tramos.push({actId:a.id,nombre:a.nombre,categoria:a.categoria,tipo:a.tipo,inicio:t,fin:t}); }
+    if(!f){ f=fila(a,t,t,"Terminada",notas); s.hoy.tramos.push(infoTramo(a,t,t,"Terminada")); }
     s.actividades=s.actividades.filter(x=>x.id!==id);
     if(a.interrupcion){ const ids=(a.dejadas||[]).filter(x=>{ const d=buscar(s,x); return d&&d.estado==="pausada"; });
       s.pendRetomar=ids.length?{ids,desde:t,tipo:a.interrupcion}:null; }
     return [f]; });
+}
+function guardarTicket(actId,ticket){
+  const t=new Date().toISOString();
+  accion(s=>{
+    const tr=s.hoy.tramos.filter(x=>x.actId===actId).sort((a,b)=>new Date(b.fin)-new Date(a.fin))[0];
+    if(!tr||buscar(s,actId)) return [];
+    s.hoy.tramos.filter(x=>x.actId===actId).forEach(x=>x.ticket=ticket);
+    const act={id:actId,nombre:tr.nombre,categoria:tr.categoria,prioridad:tr.prioridad||"",origen:tr.origen||"",solicitante:tr.solicitante||"",
+      area:tr.area||"",tipo:tr.tipo,interrupcion:tr.interrupcion||"",ticket};
+    return [fila(act,t,t,"Ajuste","Ticket agregado después de terminar")];
+  });
 }
 function interrupcionActiva(s){ return s.actividades.find(a=>a.interrupcion); }
 function iniciarInterrupcion(tipo,area,persona,motivo){
@@ -474,7 +508,13 @@ function iniciarInterrupcion(tipo,area,persona,motivo){
   accion(s=>{
     if(interrupcionActiva(s)) return [];
     const filas=[], dejadas=[];
-    s.actividades.forEach(a=>{ if(a.estado==="corriendo"&&a.tipo==="Activa"){ const f=cerrarTramo(s,a,t,"Parcial","Pausada por "+(tipo==="Junta"?"junta":"urgencia en sitio")); if(f) filas.push(f); a.estado="pausada"; dejadas.push(a.id); } });
+    const motivoPausa={Junta:"junta",Urgencia:"urgencia en sitio",Comida:"comida"}[tipo];
+    s.actividades.forEach(a=>{ if(a.estado==="corriendo"&&a.tipo==="Activa"){ const f=cerrarTramo(s,a,t,"Parcial","Pausada por "+motivoPausa); if(f) filas.push(f); a.estado="pausada"; dejadas.push(a.id); } });
+    if(tipo==="Comida"){
+      s.actividades.push({ id:uid(), nombre:"Comida", categoria:"Comida", prioridad:"Baja", origen:"Comida", solicitante:"", area:"",
+        tipo:"Comida", estado:"corriendo", tramoInicio:t, creada:t, interrupcion:"Comida", dejadas });
+      s.pendRetomar=null; return filas;
+    }
     const nombre=tipo==="Junta"?"Junta"+(motivo?": "+motivo:"")+(area?" · "+area:""):"Urgencia en sitio · "+area+(motivo?": "+motivo:"");
     s.actividades.push({ id:uid(), nombre, categoria:tipo==="Junta"?"Reuniones":"Urgencias en sitio", prioridad:"Alta", origen:tipo==="Junta"?"Junta":"Urgencia",
       solicitante:persona, area, tipo:"Activa", estado:"corriendo", tramoInicio:t, creada:t, interrupcion:tipo, dejadas });
@@ -504,7 +544,7 @@ function guardarForm(ev){
     if(f<=i){ $("errFechas").textContent="La hora de fin debe ser posterior a la de inicio."; return; }
     if(f>new Date(Date.now()+60000)){ $("errFechas").textContent="La hora de fin no puede estar en el futuro."; return; }
     const ini=i.toISOString(), fin=f.toISOString(), notas=$("fNotas").value.trim(); act.ticket=$("fTicket").value.trim();
-    accion(s=>{ if(hoyISO(i)===s.hoy.fecha) s.hoy.tramos.push({actId:act.id,nombre,categoria:act.categoria,tipo:act.tipo,inicio:ini,fin}); return [fila(act,ini,fin,"Terminada",notas)]; });
+    accion(s=>{ if(hoyISO(i)===s.hoy.fecha) s.hoy.tramos.push(infoTramo(act,ini,fin,"Terminada")); return [fila(act,ini,fin,"Terminada",notas)]; });
   } else {
     act.tramoInicio=new Date().toISOString();
     accion(s=>{ s.actividades.push(act); return []; });
@@ -538,7 +578,21 @@ function setSync(tipo,texto){
 function bloquear(b){ document.querySelectorAll("#vistaApp .btn").forEach(x=>x.disabled=b); }
 function pintarCola(){ const n=(ls(K("cola"))||[]).length; $("infoCola").textContent=n?`${n} registro(s) por enviar al Excel`:"Todo enviado al Excel"; }
 
+function tarjetaComida(a){
+  const dej=(a.dejadas||[]).map(id=>buscar(estado,id)).filter(Boolean);
+  const h=CONFIG.horario[new Date(a.tramoInicio).getDay()], permitido=h?h[2]:60;
+  const llevas=min(Date.now()-new Date(a.tramoInicio));
+  return `<article class="act comida" data-id="${a.id}">
+    <div class="act-fila">
+      <div><div class="act-nombre">Comida</div><div class="act-det">Permitido: ${permitido} min · desde ${hora(a.tramoInicio)}</div></div>
+      <div class="reloj"><span data-desde="${a.tramoInicio}">${fmtReloj(Date.now()-new Date(a.tramoInicio))}</span><small style="${llevas>permitido?"color:var(--alerta)":""}">${llevas>permitido?"Excede por "+Math.round(llevas-permitido)+" min":"Quedan "+Math.max(0,Math.round(permitido-llevas))+" min"}</small></div>
+    </div>
+    ${dej.length?`<div class="act-det" style="margin-top:8px">En pausa: ${dej.map(d=>esc(d.nombre)).join(", ")}</div>`:""}
+    <div class="acciones"><button class="btn prim" data-acc="terminarComida">Regresé de comer</button></div>
+  </article>`;
+}
 function tarjetaInterr(a){
+  if(a.interrupcion==="Comida") return tarjetaComida(a);
   const dej=(a.dejadas||[]).map(id=>buscar(estado,id)).filter(Boolean);
   return `<article class="act interrupcion" data-id="${a.id}">
     <div class="act-fila">
@@ -584,7 +638,27 @@ function tarjeta(a,calc){
   </article>`;
 }
 
+/* Guarda lo que el usuario tiene abierto o escribiendo, para restaurarlo tras redibujar */
+function capturarUI(){
+  const abiertos={};
+  document.querySelectorAll(".act .cierre.abierta").forEach(c=>{ const id=c.closest(".act").dataset.id;
+    abiertos[id]={nota:(c.querySelector("textarea")||{}).value||"",tk:(c.querySelector(".tk")||{}).value||""}; });
+  const el=document.activeElement, foco=el&&el.id&&el.closest&&el.closest(".act")?{id:el.id,ini:el.selectionStart,fin:el.selectionEnd}:null;
+  const marcadas=[...document.querySelectorAll("#panelRetomar input")].reduce((o,x)=>(o[x.value]=x.checked,o),{});
+  const tks={}; document.querySelectorAll(".tk-hoy .edtk.abierta").forEach(e=>{ tks[e.closest(".tk-hoy").dataset.act]=e.querySelector("input").value; });
+  const el2=document.activeElement, focoTk=el2&&el2.id&&el2.id.startsWith("tkh-")?{id:el2.id,ini:el2.selectionStart,fin:el2.selectionEnd}:null;
+  return {abiertos,foco:foco||focoTk,marcadas,tks};
+}
+function restaurarUI(u){
+  Object.keys(u.abiertos).forEach(id=>{ const card=document.querySelector(`.act[data-id="${id}"]`); if(!card) return;
+    const c=card.querySelector(".cierre"); if(!c) return; c.classList.add("abierta");
+    const ta=c.querySelector("textarea"), tk=c.querySelector(".tk"); if(ta) ta.value=u.abiertos[id].nota; if(tk) tk.value=u.abiertos[id].tk; });
+  document.querySelectorAll("#panelRetomar input").forEach(x=>{ if(x.value in u.marcadas) x.checked=u.marcadas[x.value]; });
+  Object.keys(u.tks||{}).forEach(id=>{ const e=document.querySelector(`.tk-hoy[data-act="${id}"] .edtk`); if(e){ e.classList.add("abierta"); e.querySelector("input").value=u.tks[id]; } });
+  if(u.foco){ const el=$(u.foco.id); if(el){ el.focus(); try{ el.setSelectionRange(u.foco.ini,u.foco.fin); }catch(e){} } }
+}
 function render(){
+  const ui=capturarUI();
   normalizarDia(estado);
   $("fechaHoy").textContent=new Date().toLocaleDateString("es-MX",{weekday:"long",day:"numeric",month:"long"});
   const t=tramosHoy(), calc=calcularDia(t), j=jornadaHoy();
@@ -603,7 +677,7 @@ function render(){
   const intAct=interrupcionActiva(estado);
   if(intAct) $("formInterr").hidden=true; $("barraInterr").hidden=!!intAct||!$("formInterr").hidden;
   const pr=estado.pendRetomar, pend=pr?pr.ids.map(id=>buscar(estado,id)).filter(a=>a&&a.estado==="pausada"):[];
-  $("panelRetomar").innerHTML=pend.length&&!intAct?`<div class="retomar"><div class="act-nombre">Terminó la ${pr.tipo==="Junta"?"junta":"urgencia"} a las ${hora(pr.desde)} ¿Qué retomas?</div>
+  $("panelRetomar").innerHTML=pend.length&&!intAct?`<div class="retomar"><div class="act-nombre">${pr.tipo==="Comida"?"Regresaste de comer":"Terminó la "+(pr.tipo==="Junta"?"junta":"urgencia")} a las ${hora(pr.desde)} ¿Qué retomas?</div>
     ${pend.map(a=>`<label><input type="checkbox" value="${a.id}" checked>${esc(a.nombre)}</label>`).join("")}
     <div class="acciones"><button class="btn prim" data-acc="retomar">Reanudar seleccionadas</button><button class="btn" data-acc="noRetomar">Ahora no</button></div></div>`:"";
   // listas
@@ -612,8 +686,16 @@ function render(){
   $("listaPausa").innerHTML=paus.length?paus.map(a=>tarjeta(a,calc)).join(""):`<div class="vacio">Nada en pausa.</div>`;
   const hechos=estado.hoy.tramos.slice().sort((a,b)=>new Date(b.inicio)-new Date(a.inicio));
   $("cuentaHoy").textContent=hechos.length?hechos.length+" tramos":"";
-  $("listaHoy").innerHTML=hechos.length?`<div class="lista">${hechos.map(x=>`<div><span><b>${esc(x.nombre)}</b><br><span class="act-det">${esc(x.categoria)}${x.tipo==="Espera"?" · en espera":""}</span></span><span class="t">${hora(x.inicio)}–${hora(x.fin)}</span></div>`).join("")}</div>`:`<div class="vacio">Aún no hay tramos cerrados hoy.</div>`;
+  const vistos={};
+  $("listaHoy").innerHTML=hechos.length?`<div class="lista">${hechos.map(x=>{
+    const editable=!vistos[x.actId]&&!buscar(estado,x.actId)&&x.tipo!=="Comida"; vistos[x.actId]=1;
+    const tk=editable?`<div class="tk-hoy" data-act="${x.actId}">${x.ticket?`<span class="act-det">Ticket ${esc(x.ticket)}</span> `:""}<button class="enlace" data-acc="abrirTk">${x.ticket?"Cambiar ticket":"+ Agregar ticket"}</button>
+      <div class="edtk"><input type="text" class="tk" id="tkh-${x.actId}" list="dlTickets" autocomplete="off" placeholder="Busca o escribe el ticket" value="${esc(x.ticket||"")}">
+      <div class="acciones"><button class="btn prim" data-acc="guardarTk">Guardar</button><button class="btn" data-acc="cerrarTk">Cancelar</button></div></div></div>`:"";
+    return `<div class="fila-hoy"><span><b>${esc(x.nombre)}</b><br><span class="act-det">${esc(x.categoria)}${x.tipo==="Espera"?" · en espera":""}</span>${tk}</span><span class="t">${hora(x.inicio)}–${hora(x.fin)}</span></div>`;
+  }).join("")}</div>`:`<div class="vacio">Aún no hay tramos cerrados hoy.</div>`;
   pintarCola();
+  restaurarUI(ui);
 }
 function pintarPista(t,j){
   const ini=j?j.ini:480, fin=j?j.fin:1080;
@@ -623,7 +705,7 @@ function pintarPista(t,j){
   desde=Math.floor(desde/60)*60; hasta=Math.ceil(hasta/60)*60; const rango=hasta-desde||1;
   const filas=[]; const orden=t.slice().sort((a,b)=>new Date(a.inicio)-new Date(b.inicio));
   const html=orden.map(x=>{ const a=minDe(x.inicio), b=minDe(x.fin); let r=filas.findIndex(f=>f<=a); if(r<0){ r=filas.length; filas.push(b);} else filas[r]=b; r=Math.min(r,2);
-    return `<div class="tramo ${x.tipo==="Espera"?"e":"a"}" title="${esc(x.nombre)} ${hora(x.inicio)}–${hora(x.fin)}" style="left:${(a-desde)/rango*100}%;width:${(b-a)/rango*100}%;top:${4+r*20}px"></div>`; }).join("");
+    return `<div class="tramo ${x.tipo==="Espera"?"e":x.tipo==="Comida"?"c":"a"}" title="${esc(x.nombre)} ${hora(x.inicio)}–${hora(x.fin)}" style="left:${(a-desde)/rango*100}%;width:${(b-a)/rango*100}%;top:${4+r*20}px"></div>`; }).join("");
   const nowM=min(ahora-base); let guias="";
   for(let m=desde;m<=hasta;m+=60) guias+=`<div class="guia" style="left:${(m-desde)/rango*100}%"></div>`;
   if(j){ if(j.ini>desde) guias+=`<div class="fuera" style="left:0;width:${(j.ini-desde)/rango*100}%"></div>`; if(hasta>j.fin) guias+=`<div class="fuera" style="left:${(j.fin-desde)/rango*100}%;right:0"></div>`; }
@@ -659,6 +741,10 @@ document.addEventListener("click",e=>{
     case "abrirFin": card.querySelector(".cierre").classList.add("abierta"); card.querySelector("textarea").focus(); break;
     case "cerrarFin": card.querySelector(".cierre").classList.remove("abierta"); break;
     case "terminar": terminar(id,card.querySelector("textarea").value.trim(),card.querySelector(".tk").value.trim()); break;
+    case "terminarComida": terminar(id,"",""); break;
+    case "abrirTk": { const e=b.closest(".tk-hoy").querySelector(".edtk"); e.classList.add("abierta"); e.querySelector("input").focus(); break; }
+    case "cerrarTk": b.closest(".edtk").classList.remove("abierta"); break;
+    case "guardarTk": { const w=b.closest(".tk-hoy"); guardarTicket(w.dataset.act,w.querySelector("input").value.trim()); break; }
     case "retomar": retomar([...document.querySelectorAll("#panelRetomar input:checked")].map(x=>x.value)); break;
     case "noRetomar": descartarRetomar(); break;
   }
@@ -666,6 +752,31 @@ document.addEventListener("click",e=>{
 $("btnEntrar").onclick=()=>pca&&pca.loginRedirect({scopes:SCOPES});
 $("btnSalir").onclick=()=>pca.logoutRedirect({account:cuenta});
 $("btnSync").onclick=()=>{ refrescar(); vaciarCola(); };
+$("btnDiag").onclick=diagnosticar;
+async function diagnosticar(){
+  const p=$("panelDiag"); p.hidden=false; const out=[];
+  const pinta=()=>{ p.innerHTML=out.map(([ok,t,d])=>`<div><span><b>${ok===null?"⏳":ok?"✅":"❌"} ${esc(t)}</b>${d?`<br><span class="act-det" style="overflow-wrap:anywhere">${esc(d)}</span>`:""}</span></div>`).join(""); };
+  const paso=async(t,fn)=>{ out.push([null,t,""]); pinta(); const i=out.length-1;
+    try{ const d=await fn(); out[i]=[true,t,d||""]; }catch(e){ out[i]=[false,t,e.message||String(e)]; } pinta(); };
+  const err=async r=>{ let m=""; try{ m=(await r.json()).error.message; }catch(x){} return new Error(r.status+" "+m); };
+  await paso("Sesión",async()=>{ const t=await pca.acquireTokenSilent({scopes:SCOPES,account:cuenta}); return (cuenta.username)+" · permisos: "+(t.scopes||[]).join(", "); });
+  await paso("Carpeta compartida",async()=>{ const r=await g(GRAPH+"/shares/"+codificarEnlace(CONFIG.carpetaCompartida)+"/driveItem?$select=id,name,parentReference,folder");
+    if(!r.ok) throw await err(r); const j=await r.json(); carpeta={driveId:j.parentReference.driveId,id:j.id}; ls(K("carpeta"),carpeta); ls("bitacora.enlace."+CONFIG.carpetaCompartida,carpeta);
+    return "Carpeta: "+j.name+(j.folder?"":" (¡el enlace no es de una carpeta!)"); });
+  await paso("Excel y tabla tblRegistro",async()=>{ const r=await g((await baseExcel())+"/tables/"+CONFIG.tabla+"/headerRowRange?$select=values");
+    if(!r.ok) throw await err(r); const enc=(await r.json()).values[0];
+    if(enc.length<COLUMNAS_REGISTRO) throw new Error("La tabla tiene "+enc.length+" columnas y la página envía "+COLUMNAS_REGISTRO+". Usa la plantilla nueva o agrega: "+["Area","Interrupcion","Tareas_Interrumpidas","Ticket","Asesor","Correo_Asesor"].slice(enc.length-18).join(", "));
+    return enc.length+" columnas, última: "+enc[enc.length-1]; });
+  await paso("Categorías (tblCategorias)",async()=>{ const r=await g((await baseExcel())+"/tables/tblCategorias/rows"); if(!r.ok) throw await err(r);
+    const v=(await r.json()).value.map(x=>x.values[0][0]).filter(Boolean); return v.length+": "+v.join(", "); });
+  await paso("Archivo de estado",async()=>{ const r=await g(rutaArchivo(archivoEstado())); if(r.status===404) return archivoEstado()+" aún no existe (se crea al iniciar una actividad)"; if(!r.ok) throw await err(r); return archivoEstado()+" OK"; });
+  await paso("Empleados",async()=>{ const v=await leerHoja(CONFIG.empleados); if(!v) throw new Error("No se pudo leer. Revisa el enlace y el permiso de lectura."); const enc=v[0];
+    let cN=colIndex(enc,CONFIG.empleados.columnaNombre,/nombre/); const cA=colIndex(enc,CONFIG.empleados.columnaArea,/^(area|departamento|depto)/);
+    return (v.length-1)+" filas · encabezados: "+enc.join(" | ")+" · nombre="+(cN>=0?enc[cN]:"(no encontrada, usa columna A: "+enc[0]+")")+" · área="+(cA>=0?enc[cA]:"(ninguna)")+" · ejemplo: "+(v[1]?v[1][cN<0?0:cN]:""); });
+  await paso("Tickets",async()=>{ const t=await cargarTickets(); if(!t) throw new Error("No se pudo leer. Revisa el enlace y el permiso de lectura."); return t.length+" tickets · ejemplos: "+t.slice(0,3).join(", "); });
+  await paso("Registros pendientes",async()=>{ const n=(ls(K("cola"))||[]).length; if(n&&ultimoError) throw new Error(n+" por enviar · último error: "+ultimoError); return n+" por enviar"; });
+  if(!out.some(x=>x[0]===false)){ await cargarCatalogos(); await refrescar(); await vaciarCola(); }
+}
 $("btnNueva").onclick=()=>abrirForm(true);
 $("btnCancelar").onclick=()=>{ $("formNueva").reset(); limpiarErrores(); modoForm(); abrirForm(false); };
 $("formNueva").addEventListener("submit",guardarForm);
@@ -682,6 +793,7 @@ document.querySelectorAll("[data-interr]").forEach(b=>b.onclick=()=>{
   $("previaInterr").textContent=(aPausar.length?"Se pausarán: "+aPausar.map(a=>a.nombre).join(", ")+". ":"No hay tareas activas que pausar. ")+(siguen.length?"Siguen corriendo en espera: "+siguen.map(a=>a.nombre).join(", ")+".":"");
   f.hidden=false; $("barraInterr").hidden=true; $("iArea").focus();
 });
+$("btnComida").onclick=()=>iniciarInterrupcion("Comida","","","");
 $("btnCancInterr").onclick=()=>{ $("formInterr").hidden=true; $("barraInterr").hidden=false; };
 $("iArea").addEventListener("change",()=>$("errArea").textContent="");
 $("formInterr").addEventListener("submit",ev=>{
