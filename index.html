@@ -101,6 +101,14 @@ h2 span{font-weight:400;color:var(--tinta-2);font-size:13px}
 .interr-form{background:var(--papel);border:1px solid var(--alerta);border-radius:14px;padding:16px;margin-top:12px}
 .act.interrupcion{border-left-color:var(--alerta);background:var(--alerta-suave)}
 .act.interrupcion .chip{background:var(--papel);color:var(--alerta)}
+.modal{position:fixed;inset:0;z-index:50;background:rgba(10,20,19,.55);display:flex;align-items:center;justify-content:center;padding:calc(16px + env(safe-area-inset-top,0px)) 16px calc(16px + env(safe-area-inset-bottom,0px))}
+.modal[hidden]{display:none}
+.modal-caja{background:var(--papel);color:var(--tinta);border:1px solid var(--linea);border-top:4px solid var(--alerta);border-radius:14px;padding:20px;max-width:440px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.3)}
+.modal-caja h3{margin:0 0 6px;font-size:18px}
+.modal-caja ul{margin:10px 0;padding-left:18px;font-size:14px;color:var(--tinta-2)}
+.cuenta{font-family:var(--fuente-num);font-weight:600;font-size:28px;color:var(--alerta);font-variant-numeric:tabular-nums}
+.modal-caja .acciones{flex-direction:column}
+.modal-caja .btn{width:100%;padding:10px}
 .retomar{background:var(--papel);border:1px solid var(--activa);border-radius:14px;padding:14px 16px;margin-top:14px}
 .retomar label{display:flex;gap:10px;align-items:center;padding:6px 0;font-size:15px}
 .retomar input{accent-color:var(--activa);width:18px;height:18px}
@@ -182,6 +190,20 @@ footer button{background:none;border:0;color:var(--activa);padding:0;text-decora
       </div>
     </form>
     <div id="panelRetomar"></div>
+    <div class="modal" id="modalFin" hidden role="dialog" aria-modal="true" aria-labelledby="finTitulo">
+      <div class="modal-caja">
+        <h3 id="finTitulo">Terminó tu jornada</h3>
+        <div class="act-det" id="finTexto"></div>
+        <ul id="finLista"></ul>
+        <div id="finCuentaBloque"><span class="act-det">Se pausarán automáticamente en</span> <span class="cuenta" id="finCuenta">60</span> <span class="act-det">s</span></div>
+        <div class="acciones">
+          <button class="btn prim" id="finAhora">Pausar todo ahora</button>
+          <button class="btn" id="finALaSalida" hidden></button>
+          <button class="btn" id="finSeguir">Cancelar, sigo trabajando</button>
+        </div>
+        <div class="ayuda" style="margin-top:8px">Si sigues trabajando te lo volveré a preguntar en 60 minutos. Ese tiempo cuenta como tiempo extra.</div>
+      </div>
+    </div>
 
     <h2>En curso <span id="cuentaCurso"></span></h2>
     <div id="listaCurso"></div>
@@ -251,7 +273,7 @@ const CONFIG = {
   clientId: "6e936517-ef92-4e10-83ac-64e65d73f8a8",     // Id. de aplicación (cliente) de Entra ID
   tenantId: "780ad8ec-7bb7-4356-a6b2-11c99d60ee48",     // Id. de directorio (inquilino)
   // Enlace para compartir de la carpeta del equipo (OneDrive o SharePoint) con permiso de edición para los asesores
-  carpetaCompartida: "https://shylaa-my.sharepoint.com/:f:/g/personal/sistemas_shyla_com/IgDypk0gTr_3TZxH8gors6iwAaZhwr8CFUvRM8eKPBZ5lh8?e=yiv9Sk",
+  carpetaCompartida: "https://shylaa-my.sharepoint.com/:f:/g/personal/sistemas_shyla_com/IgDypk0gTr_3TZxH8gors6iwAaZhwr8CFUvRM8eKPBZ5lh8?e=Z0E82x",
   excel: "Registro_Actividades.xlsx",          // nombre del Excel dentro de esa carpeta
   tabla: "tblRegistro",
   // Horario por día de la semana (0=domingo): [inicio, fin, comida] en minutos desde las 00:00
@@ -260,8 +282,8 @@ const CONFIG = {
   areasBase: ["Almacén","CEDIS","Sucursales","Contabilidad","Ventas","Marketplaces","Dirección","RH","Compras"],
   // Catálogos externos: enlace para compartir de cada archivo (los asesores necesitan permiso de lectura)
   // o, si el archivo está dentro de la carpeta compartida, su nombre en "archivo". hoja vacía = primera hoja.
-  empleados: { enlace: "https://shylaa-my.sharepoint.com/:x:/g/personal/sistemas_shyla_com/IQBRmiQ44QcBQb_8OjlEggxRAYVVx5_juHVbe9VMxHrgpPo?e=FHBFUR", archivo: "", hoja: "", columnaNombre: "", columnaArea: "" },
-  tickets:   { enlace: "https://shylaa-my.sharepoint.com/:x:/g/personal/sistemas_shyla_com/IQC-w0aBwhPZSqaQ8zmFNacfARjPvgJ0y3AsVSfwQwjOQJo?e=FAjbsa", archivo: "", hoja: "", columna: "A" },
+  empleados: { enlace: "https://shylaa-my.sharepoint.com/:x:/g/personal/sistemas_shyla_com/IQBRmiQ44QcBQb_8OjlEggxRAYVVx5_juHVbe9VMxHrgpPo?e=PeqEft", archivo: "", hoja: "", columnaNombre: "", columnaArea: "" },
+  tickets:   { enlace: "https://shylaa-my.sharepoint.com/:x:/g/personal/sistemas_shyla_com/IQC-w0aBwhPZSqaQ8zmFNacfARjPvgJ0y3AsVSfwQwjOQJo?e=BkBkIm", archivo: "", hoja: "", columna: "A" },
   intervaloSyncSeg: 20
 };
 /* ============================================================================ */
@@ -385,7 +407,7 @@ async function refrescar(){
     if(ls(K("pendiente"))){ await escribirEstado(normalizarDia(estado),true); ls(K("pendiente"),false); }
     const r=await leerEstado();
     if(r){ estado=normalizarDia(r); } else { await escribirEstado(estado=nuevoEstado()); }
-    ls(K("estado"),estado); setSync("ok"); render(); vaciarCola();
+    ls(K("estado"),estado); setSync("ok"); render(); vaciarCola(); revisarFinJornada();
   }catch(e){ setSync("pend","No se pudo sincronizar"); }
 }
 
@@ -657,6 +679,49 @@ function restaurarUI(u){
   Object.keys(u.tks||{}).forEach(id=>{ const e=document.querySelector(`.tk-hoy[data-act="${id}"] .edtk`); if(e){ e.classList.add("abierta"); e.querySelector("input").value=u.tks[id]; } });
   if(u.foco){ const el=$(u.foco.id); if(el){ el.focus(); try{ el.setSelectionRange(u.foco.ini,u.foco.fin); }catch(e){} } }
 }
+/* ---------- aviso de fin de jornada ---------- */
+const AVISO_SEG=60, REPETIR_MIN=60, TOLERANCIA_MIN=5;
+let finTimer=null, finRestante=0;
+function finJornadaHoy(){ const j=jornadaHoy(); if(!j) return null; const n=new Date(); return new Date(n.getFullYear(),n.getMonth(),n.getDate(),0,j.fin); }
+function revisarFinJornada(){
+  if(!$("modalFin").hidden||ocupado) return;
+  const fin=finJornadaHoy(); if(!fin) return;
+  const ahora=new Date(); if(ahora<fin) return;
+  const corr=estado.actividades.filter(a=>a.estado==="corriendo");
+  if(!corr.length) return;
+  if(estado.hoy.seguirHasta&&ahora<new Date(estado.hoy.seguirHasta)) return;
+  abrirAvisoFin(fin,corr);
+}
+function abrirAvisoFin(fin,corr){
+  const ahora=new Date(), tarde=(ahora-fin)/60000>TOLERANCIA_MIN, hf=hora(fin.toISOString());
+  $("finTitulo").textContent=tarde?"Tus actividades siguieron corriendo":"Terminó tu jornada";
+  $("finTexto").textContent=tarde?`Tu salida era a las ${hf} ¿Hasta qué hora trabajaste en esto?`:`Son las ${hora(ahora.toISOString())}. Tienes ${corr.length} actividad(es) corriendo:`;
+  $("finLista").innerHTML=corr.map(a=>`<li>${esc(a.nombre)}${a.tipo==="Espera"?" (en espera)":""}</li>`).join("");
+  $("finALaSalida").hidden=!tarde; $("finALaSalida").textContent=`Pausar a las ${hf} (mi hora de salida)`;
+  $("finAhora").textContent=tarde?"Pausar ahora (trabajé hasta ahora)":"Pausar todo ahora";
+  $("finAhora").classList.toggle("prim",!tarde); $("finALaSalida").classList.toggle("prim",tarde);
+  $("modalFin").hidden=false; (tarde?$("finALaSalida"):$("finAhora")).focus();
+  finRestante=AVISO_SEG; $("finCuenta").textContent=finRestante; $("finCuentaBloque").hidden=false;
+  clearInterval(finTimer);
+  finTimer=setInterval(()=>{ finRestante--; $("finCuenta").textContent=Math.max(0,finRestante); if(finRestante<=0){ cerrarAvisoFin(); pausarTodoFin("salida"); } },1000);
+}
+function cerrarAvisoFin(){ clearInterval(finTimer); $("modalFin").hidden=true; }
+function pausarTodoFin(modo){
+  const fin=finJornadaHoy(), ahora=new Date();
+  accion(s=>{
+    const filas=[];
+    s.actividades.slice().forEach(a=>{
+      if(a.estado!=="corriendo"||!a.tramoInicio) return;
+      let t=ahora; if(modo==="salida"&&fin&&ahora>fin) t=new Date(Math.max(+fin,+new Date(a.tramoInicio)));
+      const tISO=t.toISOString();
+      if(a.interrupcion){ const f=cerrarTramo(s,a,tISO,"Terminada","Cerrada al fin de la jornada"); if(f) filas.push(f); s.actividades=s.actividades.filter(x=>x.id!==a.id); }
+      else { const f=cerrarTramo(s,a,tISO,"Parcial","Pausada al fin de la jornada"); if(f) filas.push(f); a.estado="pausada"; }
+    });
+    s.hoy.seguirHasta=null; s.pendRetomar=null; return filas;
+  });
+}
+function seguirTrabajando(){ const hasta=new Date(Date.now()+REPETIR_MIN*60000).toISOString(); accion(s=>{ s.hoy.seguirHasta=hasta; return []; }); }
+
 function render(){
   const ui=capturarUI();
   normalizarDia(estado);
@@ -729,7 +794,8 @@ async function mostrarApp(){
   await cargarCatalogos(); await refrescar();
   setInterval(tic,1000);
   setInterval(()=>{ if(document.visibilityState==="visible") refrescar(); },CONFIG.intervaloSyncSeg*1000);
-  setInterval(render,60000);
+  setInterval(()=>{ render(); revisarFinJornada(); },60000);
+  revisarFinJornada();
 }
 document.addEventListener("click",e=>{
   const b=e.target.closest("[data-acc]"); if(!b) return;
@@ -753,6 +819,10 @@ $("btnEntrar").onclick=()=>pca&&pca.loginRedirect({scopes:SCOPES});
 $("btnSalir").onclick=()=>pca.logoutRedirect({account:cuenta});
 $("btnSync").onclick=()=>{ refrescar(); vaciarCola(); };
 $("btnDiag").onclick=diagnosticar;
+$("finAhora").onclick=()=>{ cerrarAvisoFin(); pausarTodoFin("ahora"); };
+$("finALaSalida").onclick=()=>{ cerrarAvisoFin(); pausarTodoFin("salida"); };
+$("finSeguir").onclick=()=>{ cerrarAvisoFin(); seguirTrabajando(); };
+document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&!$("modalFin").hidden){ cerrarAvisoFin(); seguirTrabajando(); } });
 async function diagnosticar(){
   const p=$("panelDiag"); p.hidden=false; const out=[];
   const pinta=()=>{ p.innerHTML=out.map(([ok,t,d])=>`<div><span><b>${ok===null?"⏳":ok?"✅":"❌"} ${esc(t)}</b>${d?`<br><span class="act-det" style="overflow-wrap:anywhere">${esc(d)}</span>`:""}</span></div>`).join(""); };
